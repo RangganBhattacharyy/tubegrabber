@@ -1,0 +1,111 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+body {
+    background-color: #f0f2f5;
+    color: #333;
+}
+header {
+    background: #fff;
+    padding: 20px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+header h1 {
+    color: #ff0000;
+    font-size: 24px;
+}
+header nav a {
+    text-decoration: none;
+    color: #555;
+    font-weight: bold;
+    margin-left: 20px;
+}
+header nav a:hover {
+    color: #ff0000;
+}
+.main-container {
+    max-width: 800px;
+    margin: 60px auto;
+    background: #fff;
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    text-align: center;
+}
+.main-container h2 {
+    margin-bottom: 10px;
+    font-size: 28px;
+}
+.main-container p {
+    color: #666;
+    margin-bottom: 30px;
+}
+.form-group {
+    display: flex;
+    gap: 10px;
+}
+.form-group input {
+    flex: 1;
+    padding: 14px 18px;
+    font-size: 16px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    outline: none;
+    transition: 0.3s;
+}
+.form-group input:focus {
+    border-color: #ff0000;
+}
+.form-group button {
+    padding: 14px 30px;
+    background: #ff0000;
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+.form-group button:hover {
+    background: #cc0000;
+}
+.result-box {
+    margin-top: 30px;
+    text-align: left;
+    display: flex;
+    gap: 20px;
+    background: #fafafa;
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #eee;
+}
+.result-box img {
+    width: 200px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 6px;
+}
+.download-options {
+    margin-top: 15px;
+}
+.btn-download {
+    display: inline-block;
+    padding: 8px 16px;
+    background: #28a745;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 5px;
+    font-size: 14px;
+    margin-right: 10px;
+    font-weight: bold;
+}
+.btn-download:hover {
+    background: #218838;
+}
