@@ -27,23 +27,18 @@ from urllib.parse import urljoin
 
 app = Flask(__name__)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
+DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "downloads")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
-# Optional: place a cookies.txt (Netscape format) file next to this script
-# to let yt-dlp download Instagram/Facebook content that requires login.
-COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
 
 # In-memory job tracker: {job_id: {"status": ..., "progress": ..., "filename": ...}}
 JOBS = {}
 
 QUALITY_MAP = {
-    "best": "bestvideo+bestaudio/best",
-    "1080p": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-    "720p": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-    "480p": "bestvideo[height<=480]+bestaudio/best[height<=480]/best",
-    "360p": "bestvideo[height<=360]+bestaudio/best[height<=360]/best",
+    "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+    "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+    "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]",
+    "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480]",
+    "360p": "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360]",
 }
 
 
@@ -164,7 +159,12 @@ def run_download(job_id, urls, quality, audio_only, playlist):
         "progress_hooks": [make_hook(job_id)],
         "quiet": True,
         "no_warnings": True,
-        **({"cookiefile": COOKIES_FILE} if os.path.exists(COOKIES_FILE) else {}),
+        # NOTE: ignoreerrors is intentionally left off here. When it's on,
+        # yt-dlp swallows per-video failures and the job can end up marked
+        # "done" even though nothing was actually downloaded (e.g. an
+        # unsupported site, a private video, a dead link). Each URL below
+        # is downloaded in its own try/except instead, so real failures
+        # are captured and shown to the user.
     }
 
     if audio_only:
@@ -185,40 +185,40 @@ def run_download(job_id, urls, quality, audio_only, playlist):
                 ydl.download([url])
             job["completed"].append(url)
         except Exception as yt_error:
-            known_site = any(
-                d in url for d in ("youtube.com", "youtu.be", "instagram.com", "facebook.com", "fb.watch")
-            )
+            # yt-dlp doesn't know this site (e.g. a podcast page like
+            # Aaro Ananda rather than YouTube/Instagram/Facebook). Try a
+            # plain-HTML fallback: fetch the page like a browser and look
+            # for a direct audio/video file to stream down.
+            try:
+                media_url, title = find_direct_media_url(url)
+                if media_url:
+                    download_direct_file(media_url, title, job_id, audio_only)
+                    job["completed"].append(url)
+                else:
+                    raise RuntimeError(
+                        "yt-dlp doesn't support this site and no direct "
+                        "audio/video file could be found on the page."
+                    )
+            except Exception as fallback_error:
+                job["failed"].append({
+                    "url": url,
+                    "error": f"{yt_error}\n(fallback also failed: {fallback_error})",
+                })
 
-            if known_site:
-                job["failed"].append({"url": url, "error": str(yt_error)})
-            else:
-                try:
-                    media_url, title = find_direct_media_url(url)
-                    if media_url:
-                        download_direct_file(media_url, title, job_id, audio_only)
-                        job["completed"].append(url)
-                    else:
-                        raise RuntimeError(
-                            "yt-dlp doesn't support this site and no direct "
-                            "audio/video file could be found on the page."
-                        )
-                except Exception as fallback_error:
-                    job["failed"].append({
-                        "url": url,
-                        "error": f"{yt_error}\n(fallback also failed: {fallback_error})",
-                    })
-
+        # mark this url as done for overall progress purposes
         job["current_index"] = i + 1
         job["progress"] = round((i + 1) / job["total"] * 100, 1)
 
     if job["failed"] and not job["completed"]:
         job["status"] = "error"
         first_reason = job["failed"][0]["error"]
+        # Prefer showing why the fallback failed, since that's the more
+        # specific/actionable reason when yt-dlp doesn't support the site.
         if "(fallback also failed:" in first_reason:
             fallback_part = first_reason.split("(fallback also failed:", 1)[1].rstrip(")")
             short_reason = fallback_part.strip()[:200]
         else:
-            short_reason = first_reason.split("\n")[0][:300]
+            short_reason = first_reason.split("\n")[0][:200]
         job["error"] = f"Could not download: {short_reason}"
     else:
         job["status"] = "done"
@@ -234,6 +234,9 @@ def index():
 def api_download():
     data = request.get_json(force=True)
 
+    # Accept either a single "url" field or a multi-line "urls" field.
+    # Splitting on newlines/commas/whitespace lets people paste a whole
+    # block of links copied from a chat or a notes app.
     raw = data.get("urls")
     if raw is None:
         raw = data.get("url") or ""
@@ -241,11 +244,13 @@ def api_download():
     if isinstance(raw, list):
         candidates = raw
     else:
+        # split on newlines and commas
         candidates = []
         for line in str(raw).splitlines():
             candidates.extend(line.split(","))
 
     urls = [u.strip() for u in candidates if u.strip()]
+    # de-duplicate while keeping order
     seen = set()
     urls = [u for u in urls if not (u in seen or seen.add(u))]
 
@@ -294,8 +299,6 @@ def list_files():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True, port=5000)
+
     
