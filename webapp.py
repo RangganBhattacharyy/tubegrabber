@@ -27,12 +27,13 @@ from urllib.parse import urljoin
 
 app = Flask(__name__)
 
-DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "downloads")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Optional: place a cookies.txt (Netscape format) file next to this script
 # to let yt-dlp download Instagram/Facebook content that requires login.
-COOKIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
 
 # In-memory job tracker: {job_id: {"status": ..., "progress": ..., "filename": ...}}
 JOBS = {}
@@ -163,18 +164,7 @@ def run_download(job_id, urls, quality, audio_only, playlist):
         "progress_hooks": [make_hook(job_id)],
         "quiet": True,
         "no_warnings": True,
-        # Instagram often needs a logged-in session even for content that
-        # looks public in a browser -- without cookies, yt-dlp gets
-        # rate-limited or blocked. If a cookies.txt file (Netscape format,
-        # exported from a browser extension) exists next to this script,
-        # use it automatically.
         **({"cookiefile": COOKIES_FILE} if os.path.exists(COOKIES_FILE) else {}),
-        # NOTE: ignoreerrors is intentionally left off here. When it's on,
-        # yt-dlp swallows per-video failures and the job can end up marked
-        # "done" even though nothing was actually downloaded (e.g. an
-        # unsupported site, a private video, a dead link). Each URL below
-        # is downloaded in its own try/except instead, so real failures
-        # are captured and shown to the user.
     }
 
     if audio_only:
@@ -195,12 +185,6 @@ def run_download(job_id, urls, quality, audio_only, playlist):
                 ydl.download([url])
             job["completed"].append(url)
         except Exception as yt_error:
-            # Sites yt-dlp *does* recognize (youtube.com, instagram.com,
-            # facebook.com) should never fall through to the generic
-            # HTML-scrape fallback below -- that fallback only works on
-            # plain pages with a raw <video>/<audio> tag, and Instagram
-            # renders everything with JavaScript, so it will never find
-            # anything there. Falling through just hides the real error.
             known_site = any(
                 d in url for d in ("youtube.com", "youtu.be", "instagram.com", "facebook.com", "fb.watch")
             )
@@ -208,9 +192,6 @@ def run_download(job_id, urls, quality, audio_only, playlist):
             if known_site:
                 job["failed"].append({"url": url, "error": str(yt_error)})
             else:
-                # Unknown/generic site (e.g. a podcast page like Aaro
-                # Ananda): try a plain-HTML fallback -- fetch the page like
-                # a browser and look for a direct audio/video file.
                 try:
                     media_url, title = find_direct_media_url(url)
                     if media_url:
@@ -227,15 +208,12 @@ def run_download(job_id, urls, quality, audio_only, playlist):
                         "error": f"{yt_error}\n(fallback also failed: {fallback_error})",
                     })
 
-        # mark this url as done for overall progress purposes
         job["current_index"] = i + 1
         job["progress"] = round((i + 1) / job["total"] * 100, 1)
 
     if job["failed"] and not job["completed"]:
         job["status"] = "error"
         first_reason = job["failed"][0]["error"]
-        # Prefer showing why the fallback failed, since that's the more
-        # specific/actionable reason when yt-dlp doesn't support the site.
         if "(fallback also failed:" in first_reason:
             fallback_part = first_reason.split("(fallback also failed:", 1)[1].rstrip(")")
             short_reason = fallback_part.strip()[:200]
@@ -256,9 +234,6 @@ def index():
 def api_download():
     data = request.get_json(force=True)
 
-    # Accept either a single "url" field or a multi-line "urls" field.
-    # Splitting on newlines/commas/whitespace lets people paste a whole
-    # block of links copied from a chat or a notes app.
     raw = data.get("urls")
     if raw is None:
         raw = data.get("url") or ""
@@ -266,13 +241,11 @@ def api_download():
     if isinstance(raw, list):
         candidates = raw
     else:
-        # split on newlines and commas
         candidates = []
         for line in str(raw).splitlines():
             candidates.extend(line.split(","))
 
     urls = [u.strip() for u in candidates if u.strip()]
-    # de-duplicate while keeping order
     seen = set()
     urls = [u for u in urls if not (u in seen or seen.add(u))]
 
@@ -321,6 +294,8 @@ def list_files():
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
     
