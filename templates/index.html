@@ -342,7 +342,7 @@
 
     <div class="footnote">
       Only download videos you own, that are public domain, or that you have permission to save.
-      Files land in the <code>downloads/</code> folder next to this app.
+      Files land in the <code>downloads/</code> folder next to this app.[cite: 1]
     </div>
   </div>
 
@@ -482,10 +482,18 @@ async function checkStatus(jobId) {
         msg.className = 'msg err';
       } else {
         msg.textContent = total > 1
-          ? `All ${total} downloads saved to the downloads folder.`
-          : 'Saved to the downloads folder.';
+          ? `All ${total} downloads saved to downloads.`
+          : 'Saved to downloads.';
         msg.className = 'msg ok';
       }
+
+      // অটোমেটিক ব্রাউজার ডাউনলোড ট্রিগার করার জন্য
+      if (data.filename) {
+        const downloadLink = document.createElement('a');
+        downloadLink.href = `/downloads/${encodeURIComponent(data.filename)}`;
+        downloadLink.click();
+      }
+
       resetButton();
     } else if (data.status === 'error') {
       clearInterval(poll);
